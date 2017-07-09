@@ -17,7 +17,7 @@ case $? in
 		:
 		;;
 	127)
-		echo "pearl-file-mimeinfo is not installed"
+		echo "perl-File-MimeInfo is not installed"
 		exitAfter=true
 		;;
 esac
@@ -60,9 +60,9 @@ case $exitAfter in
 		echo "All required packages are here!"
 		;;
 esac
-configfile=$(pwd)/config.json
+configfile=~/.uplconfig
 if [ -e "$configfile" ]; then
-	cat $configfile | jq -e 'has("host", "port", "uploadDir", "fileDir", "domain", "useBitly", "bitlyKey")' > /dev/null
+	cat $configfile | jq -e 'has("host", "port", "uploadDir", "fileDir", "baseurl", "useBitly", "bitlyKey")' > /dev/null
 	case $? in
 		
 		0)
@@ -73,7 +73,7 @@ if [ -e "$configfile" ]; then
 					zenity --question --text="$configfile is empty, or not a valid JSON text. Would you like to generate a new one? Otherwise, we will quit"
 					case $? in
 						0)
-							echo '{ "host": "sftp.server", "port": "22", "uploadDir": "/srv/upl/img", "fileDir": "/srv/upl/file", "domain": "domain.for.links", "useBitly": "1", "bitlyKey": "null"}' > $configfile
+							echo '{ "host": "sftp.server", "port": "22", "uploadDir": "/srv/upl/img", "fileDir": "/srv/upl/file", "baseurl": "baseurl.for.links", "useBitly": "1", "bitlyKey": "null"}' > $configfile
 							exit 0
 							;;
 						1)
@@ -92,7 +92,7 @@ if [ -e "$configfile" ]; then
 			zenity --question --text="One or more entries are missing from $configfile. Would you like to generate a new one? Otherwise, we will quit"
 			case $? in
 				0)
-					echo '{ "host": "sftp.server", "port": "22", "uploadDir": "/srv/upl/img", "fileDir": "/srv/upl/file", "domain": "domain.for.links", "useBitly": "1", "bitlyKey": "null"}' > $configfile
+					echo '{ "host": "sftp.server", "port": "22", "uploadDir": "/srv/upl/img", "fileDir": "/srv/upl/file", "baseurl": "baseurl.for.links", "useBitly": "1", "bitlyKey": "null"}' > $configfile
 					exit 0
 					;;
 				1)
@@ -102,8 +102,8 @@ if [ -e "$configfile" ]; then
 			;;
 	esac
 else
-	echo "No config file found. Generating a new one. Quitting to allow the user to configure it."
-	echo '{ "host": "sftp.server", "port": "22", "uploadDir": "/srv/upl/img", "fileDir": "/srv/upl/file", "domain": "domain.for.links", "useBitly": "1", "bitlyKey": "null"}' > $configfile
+	echo "No config file found. Generating a new one at '~/.uplconfig'. Quitting to allow the user to configure it."
+	echo '{ "host": "sftp.server", "port": "22", "uploadDir": "/srv/upl/img", "fileDir": "/srv/upl/file", "baseurl": "baseurl.for.links", "useBitly": "1", "bitlyKey": "null"}' > $configfile
 	exit 1
 fi
 options=$(cat $configfile)
@@ -156,7 +156,7 @@ server=$(echo $options | jq -r .host)
 port=$(echo $options | jq -r .port)
 imgDir=$(echo $options | jq -r .uploadDir)
 fileDir=$(echo $options | jq -r .fileDir)
-domain=$(echo $options | jq -r .domain)
+baseurl=$(echo $options | jq -r .baseurl)
 bitlyKey=$(cat $configfile | jq -r .bitlyKey)
 case $1 in
 	"--window")
@@ -184,25 +184,30 @@ case $1 in
     			echo $clip > /tmp/$filename
     			upload=/tmp/$filename
     			;;
-    	esac
-    	;;
-    "")
+ 		esac
+		;;
+    	"")
 		delete=true
 		filename="screenshot_$(date +%m_%d_%Y_%H%M%S).png"
 		scrot /tmp/$filename
 		upload=/tmp/$filename
 		;;
+	"--file")
+		delete=false
+		filename="$(basename $2)"
+		upload=$2
+		;;
 	"--help")
-		printf "Instructions for Use \n 	--window - Takes a screenshot of the current window\n 	--rect - Allows the user to select a rectangle as a screenshot area\n 	--clip - Uploads a file or bit of text from the clipboard\n 	--help - Shows this. Duh.\n 	--config-help - displays help for config.json\n"
-		exit 0		
+		printf "Instructions for Use \n 	--window - Takes a screenshot of the current window\n 	--rect - Allows the user to select a rectangle as a screenshot area\n 	--clip - Uploads a file or bit of text from the clipboard\n 	--file <file> - upload a file specified in a secondary argument\n	--help - Shows this. Duh.\n 	--config-help - displays help for config.json\n"
+		exit 0
 		;;
 	"--config-help")
-		printf 'A configuration file called config.json must exist in the same directory as this script. it is in JSON format and must have the following entries\n     host - The ssh server to upload files to\n     port - The SSH Servers port\n     uploadDir - The directory on the ssh server to upload files to. ideally, this should be an internet-facing directory.\n     fileDir - The directory on the server to upload non-image files to. make it the same as uploadDir to upload everything to the same place.\n     domain - the domain name/directory used in generating links to the uploaded files.\n     useBitly - a 1 or 0 dictating if the user wishes to shorten links with bitly.\n     bitlyKey - a Bitly OAuth access key. this is automatically fetched upon logging in with this script. set it to null to trigger a re-authentication from this script.\nConfiguration Example:\n     { "host": "192.168.0.201", "port": "22", "uploadDir": "/srv/upl/img", "fileDir": "/srv/upl/file", "domain": "uploads.my.domain", "useBitly": "1", "bitlyKey": "null" }"\n'
+		printf 'A configuration file called config.json must exist in the same directory as this script. it is in JSON format and must have the following entries\n     host - The ssh server to upload files to\n     port - The SSH Servers port\n     uploadDir - The directory on the ssh server to upload files to. ideally, this should be an internet-facing directory.\n     fileDir - The directory on the server to upload non-image files to. make it the same as uploadDir to upload everything to the same place.\n     baseurl - the domain name/directory used in generating links to the uploaded files.\n     useBitly - a 1 or 0 dictating if the user wishes to shorten links with bitly.\n     bitlyKey - a Bitly OAuth access key. this is automatically fetched upon logging in with this script. set it to null to trigger a re-authentication from this script.\nConfiguration Example:\n     { "host": "192.168.0.201", "port": "22", "uploadDir": "/srv/upl/img", "fileDir": "/srv/upl/file", "baseurl": "uploads.my.domain", "useBitly": "1", "bitlyKey": "null" }"\n'
 		exit 0
 		;;
 	*)
 		printf "Incorrect syntax.\n"
-		printf "Instructions for Use \n 	--window - Takes a screenshot of the current window\n 	--rect - Allows the user to select a rectangle as a screenshot area\n 	--clip - Uploads a file or bit of text from the clipboard\n 	--help - Shows this. Duh.\n 	--config-help - displays help for config.json\n"
+		printf "Instructions for Use \n 	--window - Takes a screenshot of the current window\n 	--rect - Allows the user to select a rectangle as a screenshot area\n 	--clip - Uploads a file or bit of text from the clipboard\n 	--file <file> - Upload the speicified file\n	--help - Shows this. Duh.\n 	--config-help - displays help for config.json\n"
 		exit 0
 		;;
 	esac
@@ -216,7 +221,11 @@ case $mimetype in
 		;;
 esac
 scp -P $port $upload $server:$finalDir
-link="$domain/$(basename $finalDir)/$filename"
+if [ $imgDir = $fileDir ]; then
+	link="$baseurl/$filename"
+else
+	link="$baseurl/$(basename $finalDir)/$filename"
+fi
 function shorten () {
 	case $useBitly in
 		1)
@@ -228,7 +237,7 @@ function shorten () {
 			;;
 	esac
 }
-shorten $link| xclip -selection clipboard
+shorten $link | xclip -selection clipboard
 xclip -o -selection clipboard
 case $delete in
 	true)
