@@ -1,249 +1,172 @@
 #!/bin/bash
-
-scrot -v > /dev/null 2>&1
+domains="my.domain.com"
 exitAfter=false
+maim -v > /dev/null 2>&1
 case $? in
-	0)
-		:
-		;;
-	127)
-		echo "scrot is not installed"
-		exitAfter=true
-		;;
-esac
-mimetype -v > /dev/null 2>&1
-case $? in
-	0)
-		:
-		;;
-	127)
-		echo "perl-File-MimeInfo is not installed"
-		exitAfter=true
-		;;
+    0)
+        :;;
+    127)
+        echo "Maim is not installed"
+        exitAfter=true
+        ;;
 esac
 xclip -version > /dev/null 2>&1
 case $? in
-	0)
-		:
-		;;
-	127)
-		echo "xclip is not installed"
-		exitAfter=true
-		;;
+    0)
+        :;;
+    127)
+        echo "xclip is not installed"
+        exitAfter=true5;19M5;19m
+        ;;
 esac
-zenity --version > /dev/null 2>&1
+yad --version > /dev/null 2>&1
 case $? in
-	0)
-		:
-		;;
-	127)
-		echo "zenity is not installed"
-		exitAfter=true
-		;;
+    0)
+        :;;
+    127)
+        echo "yad is not installed"
+        ;;
 esac
 jq --version > /dev/null 2>&1
 case $? in
-	0)
-		:
-		;;
-	127)
-		echo "jq is not installed"
-		exitAfter=true
-		;;
+    0)
+        :;;
+    127)
+        echo "jq is not installed"
+        exitAfter=true
+        ;;
 esac
 case $exitAfter in
-	true)
-		echo "One or more required packages are not installed. Quitting"
-		exit 1
-		;;
-	false)
-		echo "All required packages are here!"
-		;;
+    true)
+        echo "One or more required packages are not installed. Quitting"
+        exit 1
+        ;;
+    false)
+        :;;
 esac
-configfile=~/.uplconfig
-if [ -e "$configfile" ]; then
-	cat $configfile | jq -e 'has("host", "port", "uploadDir", "fileDir", "baseurl", "useBitly", "bitlyKey")' > /dev/null
-	case $? in
-		
-		0)
-			cat $configfile | jq -e '.' > /dev/null
-			case $? in
-				
-				1)
-					zenity --question --text="$configfile is empty, or not a valid JSON text. Would you like to generate a new one? Otherwise, we will quit"
-					case $? in
-						0)
-							echo '{ "host": "sftp.server", "port": "22", "uploadDir": "/srv/upl/img", "fileDir": "/srv/upl/file", "baseurl": "baseurl.for.links", "useBitly": "1", "bitlyKey": "null"}' > $configfile
-							exit 0
-							;;
-						1)
-							exit 1
-							;;
-					esac
-					;;
-				0)
-					:
-					;;
-			esac
-			;;
-			
-			
-		1)
-			zenity --question --text="One or more entries are missing from $configfile. Would you like to generate a new one? Otherwise, we will quit"
-			case $? in
-				0)
-					echo '{ "host": "sftp.server", "port": "22", "uploadDir": "/srv/upl/img", "fileDir": "/srv/upl/file", "baseurl": "baseurl.for.links", "useBitly": "1", "bitlyKey": "null"}' > $configfile
-					exit 0
-					;;
-				1)
-					exit 1
-					;;
-			esac
-			;;
-	esac
-else
-	echo "No config file found. Generating a new one at '~/.uplconfig'. Quitting to allow the user to configure it."
-	echo '{ "host": "sftp.server", "port": "22", "uploadDir": "/srv/upl/img", "fileDir": "/srv/upl/file", "baseurl": "baseurl.for.links", "useBitly": "1", "bitlyKey": "null"}' > $configfile
-	exit 1
-fi
-options=$(cat $configfile)
-useBitly=$(echo $options | jq -r .useBitly)
-bitlyKey=$(cat $configfile | jq -r .bitlyKey)
-function bitlyAuth () {
-	loginInfo=$(zenity --title="$1" --password --username)
-	case $? in
-         0)
-	 		bitlyUser=$(echo $loginInfo | cut -d'|' -f1)
-	 		bitlyPass=$(echo $loginInfo | cut -d'|' -f2)
-			;;
-         1)
-            echo "Login cancelled by user. Quitting"
-            exit 0
-            ;;
-        -1)
-            echo "An error occurred. Quitting."
-            exit 1
-            ;;
-	esac
-	bitlyKey=$(curl -s -u "$bitlyUser:$bitlyPass" -X POST "https://api-ssl.bitly.com/oauth/access_token")
-	processBitly
+
+record() {
+    size=$(echo $1 | awk -F "+" '{print $1}')
+    length=$(echo $size | awk -F "x" '{print $1}')
+
+    if [ $((length%2)) -eq 0 ]
+    then
+        :
+    else
+        length=$((length + 1))
+    fi
+    width=$(echo $size | awk -F "x" '{print $2}')
+    if [ $((width%2)) -eq 0 ]
+    then
+        :
+    else
+        width=$((width + 1))
+    fi
+    finalsize="$(echo $length)x$(echo $width)"
+    echo $finalsize
+    #echo $length
+    #echo $width
+    area="$(echo $1 | awk -F "+" '{print $2}'),$(echo $1 | awk -F "+" '{print $3}')"
+    ffmpeg -y -video_size $finalsize -framerate 24 -f x11grab -i :1.0+$area -pix_fmt yuv420p -vcodec h264 -movflags +faststart /tmp/upload.mp4 &
+    upload=/tmp/upload.mp4
+    ffmpegpid=$!
+
+
 }
-function processBitly {
-	case $bitlyKey in
-		*401*)
-			bitlyAuth "Invalid Login"
-			;;
-		*403*)
-			bitlyAuth "Wait a Minute"
-			;;
-		*)
-			echo $
-			newConfig=$(echo $options | jq --arg bitlyKey "$bitlyKey" '.bitlyKey = $bitlyKey')
-			echo $newConfig > $configfile
-			zenity --info --title="Bit.ly" --text="Bitly authentication successful!"
-			;;
-	esac
-}
-if [[ "$useBitly" == "1" ]]; then
-	if [[ "$bitlyKey" == "null" ]]; then
-		echo "Null Bitly Key, beginning authentication process"
-		bitlyAuth "Bitly Login"
-	else
-		echo "Bitly is configured!"
-	fi
-fi
-server=$(echo $options | jq -r .host)
-port=$(echo $options | jq -r .port)
-imgDir=$(echo $options | jq -r .uploadDir)
-fileDir=$(echo $options | jq -r .fileDir)
-baseurl=$(echo $options | jq -r .baseurl)
-bitlyKey=$(cat $configfile | jq -r .bitlyKey)
+ext="/"
 case $1 in
-	"--window")
-		delete=true
-		filename="screenshot_$(date +%m_%d_%Y_%H%M%S).png"
-		scrot -u /tmp$filename
-		upload=/tmp/$filename
-		;;
-	"--rect")
-		delete=true
-		filename="screenshot_$(date +%m_%d_%Y_%H%M%S).png"
-		scrot -s /tmp/$filename
-		upload=/tmp/$filename
-		;;
-	"--clip")
-		delete=false
-		clip=$(xclip -selection clipboard -o)
-		case $clip in
-			/*)
-    			filename=$(basename $clip)
-    			upload=$clip
-    			;;
-			*)
-    			filename="text_$(date +%m_%d_%Y_%H%M%S).txt"
-    			echo $clip > /tmp/$filename
-    			upload=/tmp/$filename
-    			;;
- 		esac
-		;;
-    	"")
-		delete=true
-		filename="screenshot_$(date +%m_%d_%Y_%H%M%S).png"
-		scrot /tmp/$filename
-		upload=/tmp/$filename
-		;;
-	"--file")
-		delete=false
-		filename="$(basename $2)"
-		upload=$2
-		;;
-	"--help")
-		printf "Instructions for Use \n 	--window - Takes a screenshot of the current window\n 	--rect - Allows the user to select a rectangle as a screenshot area\n 	--clip - Uploads a file or bit of text from the clipboard\n 	--file <file> - upload a file specified in a secondary argument\n	--help - Shows this. Duh.\n 	--config-help - displays help for config.json\n"
-		exit 0
-		;;
-	"--config-help")
-		printf 'A configuration file called config.json must exist in the same directory as this script. it is in JSON format and must have the following entries\n     host - The ssh server to upload files to\n     port - The SSH Servers port\n     uploadDir - The directory on the ssh server to upload files to. ideally, this should be an internet-facing directory.\n     fileDir - The directory on the server to upload non-image files to. make it the same as uploadDir to upload everything to the same place.\n     baseurl - the domain name/directory used in generating links to the uploaded files.\n     useBitly - a 1 or 0 dictating if the user wishes to shorten links with bitly.\n     bitlyKey - a Bitly OAuth access key. this is automatically fetched upon logging in with this script. set it to null to trigger a re-authentication from this script.\nConfiguration Example:\n     { "host": "192.168.0.201", "port": "22", "uploadDir": "/srv/upl/img", "fileDir": "/srv/upl/file", "baseurl": "uploads.my.domain", "useBitly": "1", "bitlyKey": "null" }"\n'
-		exit 0
-		;;
-	*)
-		printf "Incorrect syntax.\n"
-		printf "Instructions for Use \n 	--window - Takes a screenshot of the current window\n 	--rect - Allows the user to select a rectangle as a screenshot area\n 	--clip - Uploads a file or bit of text from the clipboard\n 	--file <file> - Upload the speicified file\n	--help - Shows this. Duh.\n 	--config-help - displays help for config.json\n"
-		exit 0
-		;;
-	esac
-mimetype=$(mimetype --brief $upload)
-case $mimetype in
-	image/*)
-		finalDir=$imgDir
-		;;
-	*)
-		finalDir=$fileDir
-		;;
+    "--window")
+        delete=true
+        maim -i $(xdotool getactivewindow) /tmp/upload.png
+        upload="/tmp/upload.png"
+        ;;
+    "--rect")
+        sleep 0.2
+        delete=true
+        maim -s /tmp/upload.png
+        upload="/tmp/upload.png"
+        ;;
+    "--clip")
+        delete=false
+        clip=$(xclip -selection clipboard -o)
+        case $clip in
+            /*)
+                echo uploading $clip
+                filename="$clip"
+                upload="$filename"
+                ;;
+            *)
+                echo "nothing to upload."
+                exit 1
+                ;;
+        esac
+        ;;
+    "--rehost")
+        delete=true
+        clip=$(xclip -selection clipboard -o)
+        filename=$(basename $clip)
+        curl -s $clip > /tmp/$filename
+        upload="/tmp/$filename"
+        ;;
+    "")
+        delete=true
+        maim /tmp/upload.png
+        upload="/tmp/upload.png"
+        ;;
+    "--annotate")
+        delete=true
+        maim /tmp/upload.png
+        gpaint /tmp/upload.png
+        upload=/tmp/upload.png
+        ;;
+    "--rect-annotate")
+        delete=true
+        maim -s /tmp/upload.png
+        gpaint /tmp/upload.png
+        upload="/tmp/upload.png"
+        ;;
+    "--rect-record")
+        sleep 0.2
+        delete=false
+        coords=$(slop)
+        mkdir -p /tmp/gif
+        record $coords
+        echo $ffmpegpid
+        yad --notification --command="killall yad" > /dev/null
+        kill $ffmpegpid
+        RET=1
+        until [ ${RET} -eq 0 ]; do
+            kill -0 $ffmpegpid
+            RET=$?
+            echo "ffmpeg is still alive"
+            sleep 2
+        done
+        ext="/raw/"
+        ;;
+    *)
+        echo "Incorrect syntax."
+        echo "options are: --window, --rect, --clip, --annotate --rect-annotate --rect-record"
+        ;;
 esac
-scp -P $port $upload $server:$finalDir
-if [ $imgDir = $fileDir ]; then
-	link="$baseurl/$filename"
-else
-	link="$baseurl/$(basename $finalDir)/$filename"
-fi
-function shorten () {
-	case $useBitly in
-		1)
-			shortLink=$(curl -s -X GET 'https://api-ssl.bitly.com/v3/shorten?access_token='$bitlyKey'&longUrl=http://'$1'&format=txt')
-			echo "$shortLink"
-			;;
-		0)
-			echo "$1"
-			;;
-	esac
-}
-shorten $link | xclip -selection clipboard
+echo $upload
+domain="https://$(echo $domains | xargs shuf -e | head -1)"
+##
+# This is the stuff you're going to have to change if you don't use pictshare
+##
+pictjson=$(curl -F "postimage=@$upload" -F "upload_code=UPLOAD_CODE" $domain/backend.php)
+echo "Output: $pictjson"
+hash=$(echo -n $pictjson | jq -r '.hash')
+link="$domain$ext$hash"
+##
+# Thus ends the stuff you're going to have to change if you don't use pictshare
+##
+echo -n $link | xclip -selection clipboard
 xclip -o -selection clipboard
+notify-send $(xclip -o -selection clipboard)
 case $delete in
-	true)
-		rm $upload
-		;;
-	false)
-		:
-		;;
+    true)
+        rm $upload
+        ;;
+    false)
+        :;;
 esac
